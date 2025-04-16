@@ -16,7 +16,7 @@
             font-family: 'Roboto Mono', monospace;
             font-size: 30px;
             position: relative;
-            text-align: left; /* Ensure text is aligned to the left */
+            text-align: left;
         }
         .container {
             position: absolute;
@@ -64,56 +64,95 @@
         </div>
     </div>
     <script>
-        async function fetchData() {
+        async function fetchStats(playerId) {
+            const ladderId = 15; // Fixed ladder ID
+            const url = `https://mkwlounge.gg/ladder/player.php?ladder_id=${ladderId}&player_id=${playerId}`;
+
             try {
-                const response = await fetch('stats.json');
-                const data = await response.json();
-                const lrText = data.LR;
-                const mmrText = data.MMR;
-
-                const lrValue = lrText.split(' ')[0];
-                const lrChange = mmrText.split(' ')[2];
-                const mmrValue = mmrText.split(' ')[0];
-                const mmrChange = lrText.split(' ')[2];
-
-                function getChangeClass(change) {
-                    if (change.startsWith('+') && change !== '+0') {
-                        return 'gain';
-                    } else if (change.startsWith('-')) {
-                        return 'loss';
-                    } else {
-                        return 'neutral';
+                const response = await fetch(url, {
+                    headers: {
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
                     }
+                });
+
+                if (response.ok) {
+                    const htmlText = await response.text();
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(htmlText, "text/html");
+
+                    const tables = doc.querySelectorAll("table.profiletable");
+                    if (tables.length > 0) {
+                        const firstTable = tables[0];
+                        const rows = firstTable.querySelectorAll("tr");
+                        let lr = "N/A";
+                        let mmr = "N/A";
+
+                        if (rows.length > 1) {
+                            const dataCells = rows[1].querySelectorAll("td");
+                            if (dataCells.length > 6) {
+                                lr = dataCells[5].textContent.trim();
+                                mmr = dataCells[6].textContent.trim();
+                            }
+                        }
+
+                        const eventTable = tables[2];
+                        const recentEvent = eventTable.querySelectorAll("tr")[1];
+                        const eventCells = recentEvent.querySelectorAll("td");
+
+                        let lrChange = "N/A";
+                        let mmrChange = "N/A";
+
+                        if (eventCells.length > 8) {
+                            lrChange = eventCells[8].textContent.trim();
+                            mmrChange = eventCells[10].textContent.trim();
+                        }
+
+                        function getChangeClass(change) {
+                            if (change.startsWith('+') && change !== '+0') {
+                                return 'gain';
+                            } else if (change.startsWith('-')) {
+                                return 'loss';
+                            } else {
+                                return 'neutral';
+                            }
+                        }
+
+                        document.getElementById('lr').innerHTML = `LR: ${lr}<sup class="${getChangeClass(lrChange)}">${lrChange}</sup>`;
+                        document.getElementById('mmr').innerHTML = `MMR: ${mmr}<sup class="${getChangeClass(mmrChange)}">${mmrChange}</sup>`;
+                        document.getElementById('lrChange').innerHTML = `Latest LR Change: <span class="${getChangeClass(lrChange)}">${lrChange}</span>`;
+                        document.getElementById('mmrChange').innerHTML = `Latest MMR Change: <span class="${getChangeClass(mmrChange)}">${mmrChange}</span>`;
+                    } else {
+                        document.getElementById('lr').innerHTML = "No data available for this player.";
+                        document.getElementById('mmr').innerHTML = "";
+                    }
+                } else {
+                    document.getElementById('lr').innerHTML = "Failed to fetch data.";
+                    document.getElementById('mmr').innerHTML = "";
                 }
-
-                document.getElementById('lr').innerHTML = `LR: ${lrValue}<sup class="${getChangeClass(lrChange)}">${lrChange}</sup>`;
-                document.getElementById('mmr').innerHTML = `MMR: ${mmrValue}<sup class="${getChangeClass(mmrChange)}">${mmrChange}</sup>`;
-
-                document.getElementById('lrChange').innerHTML = `LR: ${lrValue}<sup class="${getChangeClass(lrChange)}">${lrChange}</sup>`;
-                document.getElementById('mmrChange').innerHTML = `MMR: ${mmrValue}<sup class="${getChangeClass(mmrChange)}">${mmrChange}</sup>`;
             } catch (error) {
-                console.error('Error loading stats.json:', error);
+                console.error('Error fetching player stats:', error);
+                document.getElementById('lr').innerHTML = "Error fetching data.";
+                document.getElementById('mmr').innerHTML = "";
             }
         }
 
-        async function runLoungeStats() {
-            try {
-                const response = await fetch('/run-lounge-stats');
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                const result = await response.json();
-                console.log('LoungeStats.py output:', result.output);
-            } catch (error) {
-                console.error('Error running LoungeStats.py:', error);
+        function startFetchingStats() {
+            const params = new URLSearchParams(window.location.search);
+            const playerId = params.get('player_id');
+
+            if (!playerId) {
+                document.getElementById('lr').innerHTML = "Please specify a player_id in the URL, e.g., ?player_id=5402";
+                return;
             }
+
+            // Fetch stats initially
+            fetchStats(playerId);
+
+            // Fetch stats every 60 seconds
+            setInterval(() => fetchStats(playerId), 60 * 1000);
         }
 
-        // Fetch data every minute
-        setInterval(fetchData, 30 * 1000);
-        
-        // Initial fetch
-        fetchData();
+        window.onload = startFetchingStats;
     </script>
 </body>
 </html>
